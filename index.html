@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Universal Game Animal GLB Generator Pro</title>
+<meta charset="utf-8">
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.159/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.159/examples/js/exporters/GLTFExporter.js"></script>
+
+<style>
+body{margin:0;background:#020617;color:white;font-family:Arial}
+#ui{
+position:fixed;left:10px;top:10px;width:260px;
+background:#020617;padding:12px;border-radius:10px;
+overflow:auto;
+max-height:95vh;
+}
+input,select,button{width:100%;margin:5px 0}
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+
+<h3>Animal Generator PRO</h3>
+
+<select id="species">
+<option>wolf</option>
+<option>lion</option>
+<option>dragon</option>
+<option>dinosaur</option>
+<option>monster</option>
+<option>alien</option>
+<option>beast</option>
+<option>robot</option>
+</select>
+
+<label>Size</label>
+<input id="size" type="range" min="0.5" max="3" step="0.1" value="1">
+
+<label>Muscle</label>
+<input id="muscle" type="range" min="0" max="1" step="0.1">
+
+<label>Legs</label>
+<input id="legCount" type="range" min="2" max="8" step="2" value="4">
+
+<label>Neck</label>
+<input id="neck" type="range" min="0.5" max="2" step="0.1">
+
+<label>Wings</label>
+<select id="wings"><option>false</option><option>true</option></select>
+
+<label>Horns</label>
+<select id="horns"><option>false</option><option>true</option></select>
+
+<label>Fur / Scales</label>
+<select id="skin">
+<option>fur</option>
+<option>scales</option>
+<option>metal</option>
+<option>skin</option>
+</select>
+
+<label>Animation</label>
+<select id="anim">
+<option>idle</option>
+<option>walk</option>
+<option>run</option>
+</select>
+
+<button onclick="generate()">Generate</button>
+<button onclick="exportGLB()">Export GLB</button>
+
+</div>
+
+<script>
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x020617);
+
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+camera.position.set(0,2,6);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+
+const light=new THREE.DirectionalLight(0xffffff,1);
+light.position.set(5,5,5);
+scene.add(light);
+
+let creature, mixer;
+
+function material(type){
+
+  if(type==="fur") return new THREE.MeshStandardMaterial({color:0x886644,roughness:.8});
+  if(type==="scales") return new THREE.MeshStandardMaterial({color:0x227744,roughness:.4});
+  if(type==="metal") return new THREE.MeshStandardMaterial({color:0x888888,metalness:1});
+  return new THREE.MeshStandardMaterial({color:0xffccaa});
+}
+
+function part(g,s,p,r,mat){
+  const mesh=new THREE.Mesh(g,mat);
+  mesh.scale.set(...s);
+  mesh.position.set(...p);
+  if(r) mesh.rotation.set(...r);
+  return mesh;
+}
+
+function generate(){
+
+  if(creature) scene.remove(creature);
+
+  creature=new THREE.Group();
+
+  const dna={
+    size:+size.value,
+    muscle:+muscle.value,
+    legs:+legCount.value,
+    neck:+neck.value,
+    wings:wings.value==="true",
+    horns:horns.value==="true",
+    skin:skin.value
+  };
+
+  const mat=material(dna.skin);
+
+  // BODY
+  const body=part(
+    new THREE.CapsuleGeometry(.5,1.5),
+    [1+dna.muscle*.6,1,1],
+    [0,0,0],null,mat
+  );
+
+  creature.add(body);
+
+  // HEAD
+  const head=part(
+    new THREE.SphereGeometry(.35),
+    [1,1,1],
+    [0,.9+dna.neck,0],null,mat
+  );
+
+  creature.add(head);
+
+  // LEGS
+  for(let i=0;i<dna.legs;i++){
+
+    const x=i<dna.legs/2?-0.4:0.4;
+    const z=(i%dna.legs)*.6-.5;
+
+    const leg=part(
+      new THREE.CylinderGeometry(.1,.12,1),
+      [1,1,1],
+      [x,-1,z],null,mat
+    );
+
+    creature.add(leg);
+  }
+
+  // TAIL
+  const tail=part(
+    new THREE.CylinderGeometry(.05,.08,1),
+    [1,1,1],
+    [0,-.3,-1],
+    [Math.PI/4,0,0],mat
+  );
+
+  creature.add(tail);
+
+  // WINGS
+  if(dna.wings){
+
+    for(let s of [-1,1]){
+
+      const wing=part(
+        new THREE.BoxGeometry(1,.1,2),
+        [1,1,1],
+        [s*1,.5,-.2],
+        [0,0,s*.5],mat
+      );
+
+      creature.add(wing);
+    }
+  }
+
+  // HORNS
+  if(dna.horns){
+
+    for(let s of [-1,1]){
+
+      const horn=part(
+        new THREE.ConeGeometry(.08,.4),
+        [1,1,1],
+        [s*.15,1.4,0],null,mat
+      );
+
+      creature.add(horn);
+    }
+  }
+
+  creature.scale.setScalar(dna.size);
+
+  setupAnimation();
+
+  scene.add(creature);
+}
+
+// BASIC ANIMATIONS
+
+function setupAnimation(){
+
+  mixer=new THREE.AnimationMixer(creature);
+
+  const times=[0,1,2];
+
+  const values=[0,.2,0];
+
+  const track=new THREE.NumberKeyframeTrack(
+    ".rotation[x]",times,values
+  );
+
+  const clip=new THREE.AnimationClip("idle",2,[track]);
+
+  const action=mixer.clipAction(clip);
+
+  action.play();
+}
+
+// EXPORT
+
+function exportGLB(){
+
+  const exporter=new THREE.GLTFExporter();
+
+  exporter.parse(creature,data=>{
+
+    const blob=new Blob([data],{type:"model/gltf-binary"});
+
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="universal_animal.glb";
+    a.click();
+
+  },{
+    binary:true,
+    animations:mixer?mixer._actions.map(a=>a._clip):[]
+  });
+}
+
+// LOOP
+
+generate();
+
+const clock=new THREE.Clock();
+
+function loop(){
+
+  requestAnimationFrame(loop);
+
+  if(mixer) mixer.update(clock.getDelta());
+
+  if(creature) creature.rotation.y+=.001;
+
+  renderer.render(scene,camera);
+}
+
+loop();
+
+</script>
+</body>
+</html>
